@@ -56,6 +56,7 @@ export const getDefaultSettings = () => {
 	// Set input radio values
 	settings["translationTiming"] = CONDITIONAL_UI_TIMINGS.always;
 	settings["furiganaTiming"] = CONDITIONAL_UI_TIMINGS.always;
+	settings["prepopulateStem"] = "hiragana";
 
 	return settings;
 };
@@ -77,6 +78,7 @@ export const getDefaultAdditiveSettings = () => {
 	// Set input radio values
 	settings["translationTiming"] = CONDITIONAL_UI_TIMINGS.always;
 	settings["furiganaTiming"] = CONDITIONAL_UI_TIMINGS.always;
+	settings["prepopulateStem"] = "hiragana";
 
 	// All conjugation settings (including advanced options) are added as false
 	const conjugationInputs = document
@@ -124,6 +126,9 @@ export function optionsMenuInit() {
 	document
 		.getElementById("translation-checkbox")
 		.addEventListener("click", showHideTranslationSubOptions);
+	document
+		.getElementById("prepopulate-checkbox")
+		.addEventListener("click", showHidePrepopulateSubOptions);
 
 	document
 		.getElementById("verbs-checkbox")
@@ -377,6 +382,13 @@ function showHideTranslationSubOptions() {
 	toggleDisplayNone(
 		document.getElementById("translation-sub-options"),
 		!document.getElementById("translation-checkbox").checked
+	);
+}
+
+function showHidePrepopulateSubOptions() {
+	toggleDisplayNone(
+		document.getElementById("prepopulate-sub-options"),
+		!document.getElementById("prepopulate-checkbox").checked
 	);
 }
 
@@ -657,6 +669,11 @@ export function selectCheckboxesInUi(settings) {
 		"translation-after-radio"
 	);
 
+	// Select prepopulate stem radio
+	const prepopStemValue = settings.prepopulateStem || "hiragana";
+	document.getElementById("prepopulate-hiragana-radio").checked = prepopStemValue === "hiragana";
+	document.getElementById("prepopulate-kanji-radio").checked = prepopStemValue === "kanji";
+
 	function selectConditionalUiRadio(
 		radioValue,
 		alwaysRadioId,
@@ -679,6 +696,7 @@ export function showHideOptionsAndCheckErrors() {
 
 	showHideFuriganaSubOptions();
 	showHideTranslationSubOptions();
+	showHidePrepopulateSubOptions();
 
 	let optionsGroups = document.getElementsByClassName("options-group");
 	for (let group of Array.from(optionsGroups)) {
@@ -704,6 +722,8 @@ export function insertSettingsFromUi(settings) {
 
 	settings.furiganaTiming = getConditionalUiSetting("furiganaTiming");
 	settings.translationTiming = getConditionalUiSetting("translationTiming");
+	settings.prepopulateStem =
+		document.querySelector('input[name="prepopulateStem"]:checked')?.value ?? "hiragana";
 
 	// Default to "always"
 	function getConditionalUiSetting(radioName) {

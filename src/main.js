@@ -34,6 +34,73 @@ const SCREENS = Object.freeze({
 	settings: 2,
 });
 
+// Pre-population modes for the answer input
+const PREPOPULATE_MODES = Object.freeze({
+	none: "none",
+	hiragana: "hiragana",
+	kanji: "kanji",
+});
+
+/**
+ * Compute the invariant stem of a word — the characters that never change
+ * across any conjugation. Returns plain text (no HTML).
+ * @param {Object} word - Word object with wordJSON and conjugation
+ * @param {string} mode - One of PREPOPULATE_MODES (none, hiragana, kanji)
+ */
+function getInvariantStem(word, mode) {
+	if (mode === PREPOPULATE_MODES.none) {
+		return "";
+	}
+
+	const wordJSON = word.wordJSON;
+	const baseText = mode === PREPOPULATE_MODES.hiragana
+		? toHiragana(wordJSON.kanji)
+		: toKanjiPlusHiragana(wordJSON.kanji);
+	const hiragana = toHiragana(wordJSON.kanji);
+	const type = wordJSON.type;
+
+	// Irregular adjectives (いい, かっこいい) — stem changes to よ, so no pre-fill
+	if (type === "ira") {
+		return "";
+	}
+
+	// na-adjectives — the whole word is the stem, conjugation is entirely suffixed
+	if (type === "na") {
+		return baseText;
+	}
+
+	// i-adjectives — drop final い
+	if (type === "i") {
+		return baseText.substring(0, baseText.length - 1);
+	}
+
+	// Irregular verbs — need special handling per group
+	if (type === "irv") {
+		// する compounds: drop する, keep the prefix
+		if (hiragana.endsWith("する")) {
+			return baseText.substring(0, baseText.length - 2);
+		}
+		// 来る: just 来 or く (reading changes between こ/き/く)
+		if (hiragana.endsWith("くる")) {
+			return baseText.substring(0, baseText.length - 2);
+		}
+		// いく/行く, ある, 問う, and other irregulars: drop last kana
+		return baseText.substring(0, baseText.length - 1);
+	}
+
+	// Ichidan (ru-verb): drop final る
+	if (type === "ru") {
+		return baseText.substring(0, baseText.length - 1);
+	}
+
+	// Godan (u-verb): drop final kana (the う-row character that changes)
+	if (type === "u") {
+		return baseText.substring(0, baseText.length - 1);
+	}
+
+	return "";
+}
+
 function wordTypeToDisplayText(type) {
 	if (type == "u") {
 		return "う-verb";
@@ -48,47 +115,102 @@ function wordTypeToDisplayText(type) {
 	}
 }
 
-function conjugationInqueryFormatting(conjugation) {
-	let newString = "";
+// Voice conjugation types that transform the verb before other conjugation steps
+const VOICE_TYPES = new Set([
+	CONJUGATION_TYPES.passive,
+	CONJUGATION_TYPES.causative,
+	CONJUGATION_TYPES.causativePassive,
+	CONJUGATION_TYPES.potential,
+]);
 
-	function createInqueryText(text, emoji) {
-		return `<div class="conjugation-inquery"><div class="inquery-emoji">${emoji}</div><div class="inquery-text">${text}</div></div> `;
+// Tense/mood types that are the final conjugation step
+const TENSE_MOOD_TYPES = new Set([
+	CONJUGATION_TYPES.past,
+	CONJUGATION_TYPES.te,
+	CONJUGATION_TYPES.volitional,
+	CONJUGATION_TYPES.imperative,
+	CONJUGATION_TYPES.adverb,
+]);
+
+function createBadge(text, cssClass, emoji) {
+	return `<span class="badge ${cssClass}"><span class="inquery-emoji">${emoji}</span>${text}</span>`;
+}
+
+function conjugationInqueryFormatting(conjugation, priorityOrder = true) {
+	const badges = [];
+
+	// Voice badge (if applicable)
+	if (VOICE_TYPES.has(conjugation.type)) {
+		const voiceEmojis = {
+			[CONJUGATION_TYPES.passive]: "🧘",
+			[CONJUGATION_TYPES.causative]: "👩‍🏫",
+			[CONJUGATION_TYPES.causativePassive]: "😒",
+			[CONJUGATION_TYPES.potential]: "🏋",
+		};
+		badges.push({
+			html: createBadge(conjugation.type, "badge-voice", voiceEmojis[conjugation.type]),
+			order: 0,
+		});
 	}
 
-	if (conjugation.type === CONJUGATION_TYPES.past) {
-		newString += createInqueryText(CONJUGATION_TYPES.past, "⌚");
-	} else if (
-		conjugation.type === CONJUGATION_TYPES.te ||
-		conjugation.type === CONJUGATION_TYPES.adverb
-	) {
-		newString += conjugation.type;
-	} else if (conjugation.type === CONJUGATION_TYPES.volitional) {
-		newString += createInqueryText(CONJUGATION_TYPES.volitional, "🍻");
-	} else if (conjugation.type === CONJUGATION_TYPES.passive) {
-		newString += createInqueryText(CONJUGATION_TYPES.passive, "🧘");
-	} else if (conjugation.type === CONJUGATION_TYPES.causative) {
-		newString += createInqueryText(CONJUGATION_TYPES.causative, "👩‍🏫");
-	} else if (conjugation.type === CONJUGATION_TYPES.potential) {
-		newString += createInqueryText(CONJUGATION_TYPES.potential, "‍🏋");
-	} else if (conjugation.type === CONJUGATION_TYPES.imperative) {
-		newString += createInqueryText(CONJUGATION_TYPES.imperative, "📢");
-	} else if (conjugation.type === CONJUGATION_TYPES.causativePassive) {
-		newString += createInqueryText(CONJUGATION_TYPES.causativePassive, "😒");
-	}
-
-	// This used to also add "Affirmative" text when affirmative was true, but it was a little redundant.
-	// Now it only adds "Negative" text when affirmative is false.
-	if (conjugation.affirmative === false) {
-		newString += createInqueryText("Negative", "🚫");
-	}
-
+	// Formality badge
 	if (conjugation.polite === true) {
-		newString += createInqueryText("Polite", "👔");
+		badges.push({
+			html: createBadge("Polite", "badge-polite", "👔"),
+			order: 1,
+		});
 	} else if (conjugation.polite === false) {
-		newString += createInqueryText("Plain", "👪");
+		badges.push({
+			html: createBadge("Plain", "badge-plain", "💬"),
+			order: 1,
+		});
 	}
 
-	return newString;
+	// Polarity badge
+	if (conjugation.affirmative === true) {
+		badges.push({
+			html: createBadge("Affirmative", "badge-affirmative", "✓"),
+			order: 2,
+		});
+	} else if (conjugation.affirmative === false) {
+		badges.push({
+			html: createBadge("Negative", "badge-negative", "✗"),
+			order: 2,
+		});
+	}
+
+	// Tense/mood badge
+	if (TENSE_MOOD_TYPES.has(conjugation.type)) {
+		const tenseEmojis = {
+			[CONJUGATION_TYPES.past]: "⌚",
+			[CONJUGATION_TYPES.te]: "🤝",
+			[CONJUGATION_TYPES.volitional]: "🍻",
+			[CONJUGATION_TYPES.imperative]: "📢",
+			[CONJUGATION_TYPES.adverb]: "📝",
+		};
+		badges.push({
+			html: createBadge(conjugation.type, "badge-tense", tenseEmojis[conjugation.type]),
+			order: 3,
+		});
+	} else if (!VOICE_TYPES.has(conjugation.type) && conjugation.type !== CONJUGATION_TYPES.present) {
+		// Present tense is the default — no badge needed
+		badges.push({
+			html: createBadge(conjugation.type, "badge-tense", ""),
+			order: 3,
+		});
+	}
+
+	if (priorityOrder) {
+		badges.sort((a, b) => a.order - b.order);
+	} else {
+		// Shuffled order
+		for (let i = badges.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[badges[i], badges[j]] = [badges[j], badges[i]];
+		}
+	}
+
+	return badges.map((b) => b.html).join(" ");
 }
 
 function changeVerbBoxFontColor(color) {
@@ -98,14 +220,14 @@ function changeVerbBoxFontColor(color) {
 	}
 }
 
-function loadNewWord(wordList) {
+function loadNewWord(wordList, priorityOrder = true) {
 	let word = pickRandomWord(wordList);
-	updateCurrentWord(word);
+	updateCurrentWord(word, priorityOrder);
 	changeVerbBoxFontColor("rgb(232, 232, 232)");
 	return word;
 }
 
-function updateCurrentWord(word) {
+function updateCurrentWord(word, priorityOrder = true) {
 	// Caution: verb-box is controlled using a combination of the background-none class and setting style.background directly.
 	// The background-none class is useful for other CSS selectors to grab onto,
 	// while the style.background is useful for setting variable bg colors.
@@ -120,7 +242,7 @@ function updateCurrentWord(word) {
 	// Set verb-type to a non-breaking space to preserve vertical height
 	document.getElementById("verb-type").textContent = "\u00A0";
 	document.getElementById("conjugation-inquery-text").innerHTML =
-		conjugationInqueryFormatting(word.conjugation);
+		conjugationInqueryFormatting(word.conjugation, priorityOrder);
 }
 
 function touConjugation(affirmative, polite, conjugationType, isKanji) {
@@ -1497,38 +1619,36 @@ function pickRandomWord(wordList) {
 	}
 }
 
-function addToScore(amount = 1, maxScoreObjects, maxScoreIndex) {
-	if (amount == 0) {
-		return;
-	}
-	let max = document.getElementById("max-streak-text");
-	let current = document.getElementById("current-streak-text");
+function addToScore(state) {
+	const maxEl = document.getElementById("max-streak-text");
+	const currentEl = document.getElementById("current-streak-text");
 
-	if (parseInt(max.textContent) <= parseInt(current.textContent)) {
-		let newAmount = parseInt(max.textContent) + amount;
-		max.textContent = newAmount;
-		if (
-			!document
-				.getElementById("max-streak")
-				.classList.contains("display-none")
-		) {
-			max.classList.add("grow-animation");
-		}
+	state.currentStreak += 1;
+	currentEl.textContent = state.currentStreak;
 
-		maxScoreObjects[maxScoreIndex].score = newAmount;
-		localStorage.setItem(
-			"maxScoreObjectsV2",
-			JSON.stringify(maxScoreObjects)
-		);
-	}
-
-	current.textContent = parseInt(current.textContent) + amount;
 	if (
 		!document
 			.getElementById("current-streak")
 			.classList.contains("display-none")
 	) {
-		current.classList.add("grow-animation");
+		currentEl.classList.add("grow-animation");
+	}
+
+	if (state.currentStreak > state.maxScoreObjects[state.maxScoreIndex].score) {
+		state.maxScoreObjects[state.maxScoreIndex].score = state.currentStreak;
+		maxEl.textContent = state.currentStreak;
+		if (
+			!document
+				.getElementById("max-streak")
+				.classList.contains("display-none")
+		) {
+			maxEl.classList.add("grow-animation");
+		}
+
+		localStorage.setItem(
+			"maxScoreObjectsV2",
+			JSON.stringify(state.maxScoreObjects)
+		);
 	}
 }
 
@@ -1632,6 +1752,9 @@ class ConjugationApp {
 		this.initState(words);
 
 		mainInput.addEventListener("keydown", (e) => this.inputKeyPress(e));
+		mainInput.addEventListener("input", (e) => this.enforceStemPrefix(e));
+		mainInput.addEventListener("click", (e) => this.enforceStemPrefix(e));
+		mainInput.addEventListener("keyup", (e) => this.enforceStemPrefix(e));
 		document
 			.getElementById("options-button")
 			.addEventListener("click", (e) => this.settingsButtonClicked(e));
@@ -1686,15 +1809,18 @@ class ConjugationApp {
 			.classList.remove("tooltip-fade-animation");
 
 		toggleDisplayNone(document.getElementById("press-any-key-text"), true);
-		toggleDisplayNone(document.getElementById("status-box"), true);
+		const statusBox = document.getElementById("status-box");
+		toggleDisplayNone(statusBox, true);
+		statusBox.style.background = "";
 
 		if (this.state.currentStreak0OnReset) {
+			this.state.currentStreak = 0;
 			document.getElementById("current-streak-text").textContent = "0";
 			this.state.currentStreak0OnReset = false;
 		}
 
 		if (this.state.loadWordOnReset) {
-			this.state.currentWord = loadNewWord(this.state.currentWordList);
+			this.state.currentWord = loadNewWord(this.state.currentWordList, this.state.settings.priorityOrder !== false);
 			this.state.loadWordOnReset = false;
 		}
 
@@ -1712,7 +1838,15 @@ class ConjugationApp {
 
 		const mainInput = document.getElementById("main-text-input");
 		mainInput.disabled = false;
-		mainInput.value = "";
+
+		// Pre-populate input with the invariant stem
+		const prepopMode = this.state.settings.prepopulate
+			? (this.state.settings.prepopulateStem || PREPOPULATE_MODES.hiragana)
+			: PREPOPULATE_MODES.none;
+		const stem = getInvariantStem(this.state.currentWord, prepopMode);
+		this.state.currentStem = stem;
+		mainInput.value = stem;
+
 		if (!isTouch) {
 			mainInput.focus();
 		}
@@ -1796,7 +1930,7 @@ class ConjugationApp {
 			);
 
 			if (inputWasCorrect) {
-				addToScore(1, this.state.maxScoreObjects, this.state.maxScoreIndex);
+				addToScore(this.state);
 				this.state.currentStreak0OnReset = false;
 			} else {
 				this.state.currentStreak0OnReset = true;
@@ -1810,6 +1944,19 @@ class ConjugationApp {
 			);
 
 			mainInput.value = "";
+		}
+	}
+
+	enforceStemPrefix(e) {
+		const mainInput = document.getElementById("main-text-input");
+		const stem = this.state.currentStem || "";
+		if (stem && !mainInput.value.startsWith(stem)) {
+			mainInput.value = stem;
+			mainInput.setSelectionRange(stem.length, stem.length);
+		}
+		// Prevent cursor from moving into the stem
+		if (stem && mainInput.selectionStart < stem.length) {
+			mainInput.setSelectionRange(stem.length, stem.length);
 		}
 	}
 
@@ -1842,6 +1989,7 @@ class ConjugationApp {
 
 		if (newMaxScoreIndex !== this.state.maxScoreIndex) {
 			this.state.maxScoreIndex = newMaxScoreIndex;
+			this.state.currentStreak = 0;
 			this.state.currentStreak0OnReset = true;
 			this.state.loadWordOnReset = true;
 
@@ -1924,9 +2072,10 @@ class ConjugationApp {
 		}
 
 		this.applySettingsUpdateWordList();
-		this.state.currentWord = loadNewWord(this.state.currentWordList);
+		this.state.currentWord = loadNewWord(this.state.currentWordList, this.state.settings.priorityOrder !== false);
 		this.state.wordsRecentlySeenQueue = [];
 
+		this.state.currentStreak = 0;
 		this.state.currentStreak0OnReset = false;
 		this.state.loadWordOnReset = false;
 
