@@ -161,7 +161,7 @@ function conjugationInqueryFormatting(conjugation, priorityOrder = true) {
 		});
 	} else if (conjugation.polite === false) {
 		badges.push({
-			html: createBadge("Plain", "badge-plain", "💬"),
+			html: createBadge("Casual", "badge-plain", "💬"),
 			order: 1,
 		});
 	}
