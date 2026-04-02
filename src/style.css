@@ -491,6 +491,12 @@ hr {
 	padding-left: 0.25rem;
 }
 
+#close-enough-button {
+	float: left;
+	margin-left: -0.27rem;
+	background: rgb(80, 80, 60);
+}
+
 .advanced-section {
 	padding-left: 0.3rem;
 	padding-right: 0.4rem;

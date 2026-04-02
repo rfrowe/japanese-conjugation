@@ -1759,6 +1759,9 @@ class ConjugationApp {
 			.getElementById("options-button")
 			.addEventListener("click", (e) => this.settingsButtonClicked(e));
 		document
+			.getElementById("close-enough-button")
+			.addEventListener("click", (e) => this.closeEnoughClicked(e));
+		document
 			.getElementById("options-form")
 			.addEventListener("submit", (e) => this.backButtonClicked(e));
 
@@ -1809,6 +1812,7 @@ class ConjugationApp {
 			.classList.remove("tooltip-fade-animation");
 
 		toggleDisplayNone(document.getElementById("press-any-key-text"), true);
+		toggleDisplayNone(document.getElementById("close-enough-button"), true);
 		const statusBox = document.getElementById("status-box");
 		toggleDisplayNone(statusBox, true);
 		statusBox.style.background = "";
@@ -1942,9 +1946,36 @@ class ConjugationApp {
 				document.getElementById("press-any-key-text"),
 				false
 			);
+			// Show "Close Enough" button only on incorrect answers
+			toggleDisplayNone(
+				document.getElementById("close-enough-button"),
+				inputWasCorrect
+			);
 
 			mainInput.value = "";
 		}
+	}
+
+	closeEnoughClicked(e) {
+		e.stopPropagation();
+		// Undo the incorrect result: credit the streak and don't reset on next load
+		addToScore(this.state);
+		this.state.currentStreak0OnReset = false;
+
+		// Update the status box to show correct
+		const statusBox = document.getElementById("status-box");
+		statusBox.style.background = "green";
+		const validAnswer = this.state.currentWord.conjugation.validAnswers[0];
+		document.getElementById("status-text").innerHTML =
+			`Close enough!<br>${validAnswer} ○`;
+
+		// Hide the verb-box incorrect styling
+		toggleBackgroundNone(document.getElementById("verb-box"), true);
+		changeVerbBoxFontColor("rgb(232, 232, 232)");
+		document.getElementById("verb-type").textContent = "\u00A0";
+
+		// Hide the button
+		toggleDisplayNone(document.getElementById("close-enough-button"), true);
 	}
 
 	enforceStemPrefix(e) {
