@@ -9,7 +9,7 @@
 	},
 	"source": "src/index.html",
 	"scripts": {
-		"dev": "parcel --dist-dir ./hot-reload-temp",
-		"build": "parcel build --dist-dir ./dist --no-source-maps --public-url ./"
+		"dev": "COMMIT_HASH=$(git rev-parse --short HEAD) parcel --dist-dir ./hot-reload-temp",
+		"build": "COMMIT_HASH=$(git rev-parse --short HEAD) parcel build --dist-dir ./dist --no-source-maps --public-url ./"
 	}
 }

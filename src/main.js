@@ -2141,6 +2141,10 @@ class ConjugationApp {
 
 initApp();
 
+// Show build hash in settings footer
+const buildHash = process.env.COMMIT_HASH || "dev";
+document.getElementById("build-hash").textContent = buildHash;
+
 // Keeping the top container hidden at the beginning prevents 1 frame of malformed UI being shown
 toggleDisplayNone(document.getElementById("toppest-container"), false);
 if (!isTouch) {
