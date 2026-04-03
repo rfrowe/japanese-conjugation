@@ -59,9 +59,14 @@ function getInvariantStem(word, mode) {
 	const hiragana = toHiragana(wordJSON.kanji);
 	const type = wordJSON.type;
 
-	// Irregular adjectives (いい, かっこいい) — stem changes to よ, so no pre-fill
+	// Irregular adjectives (いい, かっこいい)
+	// Only pre-populate the compound prefix (かっこ for かっこいい).
+	// Don't populate いい or よ — that gives away the answer.
 	if (type === "ira") {
-		return "";
+		const prefix = hiragana.endsWith("いい")
+			? baseText.substring(0, baseText.length - 2)
+			: "";
+		return prefix;
 	}
 
 	// na-adjectives — the whole word is the stem, conjugation is entirely suffixed
