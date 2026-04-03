@@ -136,7 +136,42 @@ function createBadge(text, cssClass, emoji) {
 	return `<span class="badge ${cssClass}"><span class="inquery-emoji">${emoji}</span>${text}</span>`;
 }
 
-function conjugationInqueryFormatting(conjugation, priorityOrder = true, partOfSpeech = PARTS_OF_SPEECH.verb) {
+// Badge ordering resolvers — each returns the badges in conjugation-step order.
+// The resolver receives the badges and conjugation so it can vary order by attribute values.
+const badgeOrderResolvers = {
+	// All verbs: Voice → Formality → Polarity → Tense
+	verb: ({ voice, formality, polarity, tense }) =>
+		[voice, formality, polarity, tense],
+
+	// i-adjectives & irregular adjectives: Polarity → Tense → Formality
+	iAdj: ({ polarity, tense, formality }) =>
+		[polarity, tense, formality],
+
+	// na-adjectives: order depends on polarity
+	//   Affirmative: copula is chosen by formality first (だ vs です), then tense transforms it (だった vs でした)
+	//   Negative: じゃない is the same regardless of formality, so polarity → tense → formality(+です)
+	naAdj: ({ polarity, tense, formality }, conjugation) =>
+		conjugation.affirmative !== false
+			? [polarity, formality, tense]
+			: [polarity, tense, formality],
+};
+
+function getResolver(wordType) {
+	switch (wordType) {
+		case "u":
+		case "ru":
+		case "irv":
+			return badgeOrderResolvers.verb;
+		case "na":
+			return badgeOrderResolvers.naAdj;
+		case "i":
+		case "ira":
+		default:
+			return badgeOrderResolvers.iAdj;
+	}
+}
+
+function conjugationInqueryFormatting(conjugation, priorityOrder = true, wordType = "u") {
 	// Build individual badges
 	const voiceEmojis = {
 		[CONJUGATION_TYPES.passive]: "🧘",
@@ -152,48 +187,40 @@ function conjugationInqueryFormatting(conjugation, priorityOrder = true, partOfS
 		[CONJUGATION_TYPES.adverb]: "📝",
 	};
 
-	const voice = VOICE_TYPES.has(conjugation.type)
-		? createBadge(conjugation.type, "badge-voice", voiceEmojis[conjugation.type])
-		: null;
+	const badges = {
+		voice: VOICE_TYPES.has(conjugation.type)
+			? createBadge(conjugation.type, "badge-voice", voiceEmojis[conjugation.type])
+			: null,
 
-	const formality = conjugation.polite === true
-		? createBadge("Polite", "badge-polite", "👔")
-		: conjugation.polite === false
-			? createBadge("Casual", "badge-plain", "💬")
-			: null;
+		formality: conjugation.polite === true
+			? createBadge("Polite", "badge-polite", "👔")
+			: conjugation.polite === false
+				? createBadge("Casual", "badge-plain", "💬")
+				: null,
 
-	const polarity = conjugation.affirmative === true
-		? createBadge("Affirmative", "badge-affirmative", "✓")
-		: conjugation.affirmative === false
-			? createBadge("Negative", "badge-negative", "✗")
-			: null;
+		polarity: conjugation.affirmative === true
+			? createBadge("Affirmative", "badge-affirmative", "✓")
+			: conjugation.affirmative === false
+				? createBadge("Negative", "badge-negative", "✗")
+				: null,
 
-	const tense = TENSE_MOOD_TYPES.has(conjugation.type)
-		? createBadge(conjugation.type, "badge-tense", tenseEmojis[conjugation.type])
-		: (!VOICE_TYPES.has(conjugation.type) && conjugation.type !== CONJUGATION_TYPES.present)
-			? createBadge(conjugation.type, "badge-tense", "")
-			: null;
+		tense: TENSE_MOOD_TYPES.has(conjugation.type)
+			? createBadge(conjugation.type, "badge-tense", tenseEmojis[conjugation.type])
+			: (!VOICE_TYPES.has(conjugation.type) && conjugation.type !== CONJUGATION_TYPES.present)
+				? createBadge(conjugation.type, "badge-tense", "")
+				: null,
+	};
 
-	// Assemble in priority order based on part of speech
 	let ordered;
 	if (!priorityOrder) {
-		ordered = [voice, formality, polarity, tense].filter(Boolean);
+		ordered = Object.values(badges).filter(Boolean);
 		for (let i = ordered.length - 1; i > 0; i--) {
 			const j = Math.floor(Math.random() * (i + 1));
 			[ordered[i], ordered[j]] = [ordered[j], ordered[i]];
 		}
 	} else {
-		switch (partOfSpeech) {
-			case PARTS_OF_SPEECH.adjective:
-				// Polarity → Tense → Formality
-				ordered = [polarity, tense, formality].filter(Boolean);
-				break;
-			case PARTS_OF_SPEECH.verb:
-			default:
-				// Voice → Formality → Polarity → Tense
-				ordered = [voice, formality, polarity, tense].filter(Boolean);
-				break;
-		}
+		const resolver = getResolver(wordType);
+		ordered = resolver(badges, conjugation).filter(Boolean);
 	}
 
 	return ordered.join(" ");
@@ -228,7 +255,7 @@ function updateCurrentWord(word, priorityOrder = true) {
 	// Set verb-type to a non-breaking space to preserve vertical height
 	document.getElementById("verb-type").textContent = "\u00A0";
 	document.getElementById("conjugation-inquery-text").innerHTML =
-		conjugationInqueryFormatting(word.conjugation, priorityOrder, getPartOfSpeech(word.wordJSON));
+		conjugationInqueryFormatting(word.conjugation, priorityOrder, word.wordJSON.type);
 }
 
 function touConjugation(affirmative, polite, conjugationType, isKanji) {
