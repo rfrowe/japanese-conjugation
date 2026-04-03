@@ -136,81 +136,67 @@ function createBadge(text, cssClass, emoji) {
 	return `<span class="badge ${cssClass}"><span class="inquery-emoji">${emoji}</span>${text}</span>`;
 }
 
-function conjugationInqueryFormatting(conjugation, priorityOrder = true) {
-	const badges = [];
+function conjugationInqueryFormatting(conjugation, priorityOrder = true, partOfSpeech = PARTS_OF_SPEECH.verb) {
+	// Build individual badges
+	const voiceEmojis = {
+		[CONJUGATION_TYPES.passive]: "🧘",
+		[CONJUGATION_TYPES.causative]: "👩‍🏫",
+		[CONJUGATION_TYPES.causativePassive]: "😒",
+		[CONJUGATION_TYPES.potential]: "🏋",
+	};
+	const tenseEmojis = {
+		[CONJUGATION_TYPES.past]: "⌚",
+		[CONJUGATION_TYPES.te]: "🤝",
+		[CONJUGATION_TYPES.volitional]: "🍻",
+		[CONJUGATION_TYPES.imperative]: "📢",
+		[CONJUGATION_TYPES.adverb]: "📝",
+	};
 
-	// Voice badge (if applicable)
-	if (VOICE_TYPES.has(conjugation.type)) {
-		const voiceEmojis = {
-			[CONJUGATION_TYPES.passive]: "🧘",
-			[CONJUGATION_TYPES.causative]: "👩‍🏫",
-			[CONJUGATION_TYPES.causativePassive]: "😒",
-			[CONJUGATION_TYPES.potential]: "🏋",
-		};
-		badges.push({
-			html: createBadge(conjugation.type, "badge-voice", voiceEmojis[conjugation.type]),
-			order: 0,
-		});
-	}
+	const voice = VOICE_TYPES.has(conjugation.type)
+		? createBadge(conjugation.type, "badge-voice", voiceEmojis[conjugation.type])
+		: null;
 
-	// Formality badge
-	if (conjugation.polite === true) {
-		badges.push({
-			html: createBadge("Polite", "badge-polite", "👔"),
-			order: 1,
-		});
-	} else if (conjugation.polite === false) {
-		badges.push({
-			html: createBadge("Casual", "badge-plain", "💬"),
-			order: 1,
-		});
-	}
+	const formality = conjugation.polite === true
+		? createBadge("Polite", "badge-polite", "👔")
+		: conjugation.polite === false
+			? createBadge("Casual", "badge-plain", "💬")
+			: null;
 
-	// Polarity badge
-	if (conjugation.affirmative === true) {
-		badges.push({
-			html: createBadge("Affirmative", "badge-affirmative", "✓"),
-			order: 2,
-		});
-	} else if (conjugation.affirmative === false) {
-		badges.push({
-			html: createBadge("Negative", "badge-negative", "✗"),
-			order: 2,
-		});
-	}
+	const polarity = conjugation.affirmative === true
+		? createBadge("Affirmative", "badge-affirmative", "✓")
+		: conjugation.affirmative === false
+			? createBadge("Negative", "badge-negative", "✗")
+			: null;
 
-	// Tense/mood badge
-	if (TENSE_MOOD_TYPES.has(conjugation.type)) {
-		const tenseEmojis = {
-			[CONJUGATION_TYPES.past]: "⌚",
-			[CONJUGATION_TYPES.te]: "🤝",
-			[CONJUGATION_TYPES.volitional]: "🍻",
-			[CONJUGATION_TYPES.imperative]: "📢",
-			[CONJUGATION_TYPES.adverb]: "📝",
-		};
-		badges.push({
-			html: createBadge(conjugation.type, "badge-tense", tenseEmojis[conjugation.type]),
-			order: 3,
-		});
-	} else if (!VOICE_TYPES.has(conjugation.type) && conjugation.type !== CONJUGATION_TYPES.present) {
-		// Present tense is the default — no badge needed
-		badges.push({
-			html: createBadge(conjugation.type, "badge-tense", ""),
-			order: 3,
-		});
-	}
+	const tense = TENSE_MOOD_TYPES.has(conjugation.type)
+		? createBadge(conjugation.type, "badge-tense", tenseEmojis[conjugation.type])
+		: (!VOICE_TYPES.has(conjugation.type) && conjugation.type !== CONJUGATION_TYPES.present)
+			? createBadge(conjugation.type, "badge-tense", "")
+			: null;
 
-	if (priorityOrder) {
-		badges.sort((a, b) => a.order - b.order);
-	} else {
-		// Shuffled order
-		for (let i = badges.length - 1; i > 0; i--) {
+	// Assemble in priority order based on part of speech
+	let ordered;
+	if (!priorityOrder) {
+		ordered = [voice, formality, polarity, tense].filter(Boolean);
+		for (let i = ordered.length - 1; i > 0; i--) {
 			const j = Math.floor(Math.random() * (i + 1));
-			[badges[i], badges[j]] = [badges[j], badges[i]];
+			[ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+		}
+	} else {
+		switch (partOfSpeech) {
+			case PARTS_OF_SPEECH.adjective:
+				// Polarity → Tense → Formality
+				ordered = [polarity, tense, formality].filter(Boolean);
+				break;
+			case PARTS_OF_SPEECH.verb:
+			default:
+				// Voice → Formality → Polarity → Tense
+				ordered = [voice, formality, polarity, tense].filter(Boolean);
+				break;
 		}
 	}
 
-	return badges.map((b) => b.html).join(" ");
+	return ordered.join(" ");
 }
 
 function changeVerbBoxFontColor(color) {
@@ -242,7 +228,7 @@ function updateCurrentWord(word, priorityOrder = true) {
 	// Set verb-type to a non-breaking space to preserve vertical height
 	document.getElementById("verb-type").textContent = "\u00A0";
 	document.getElementById("conjugation-inquery-text").innerHTML =
-		conjugationInqueryFormatting(word.conjugation, priorityOrder);
+		conjugationInqueryFormatting(word.conjugation, priorityOrder, getPartOfSpeech(word.wordJSON));
 }
 
 function touConjugation(affirmative, polite, conjugationType, isKanji) {
